@@ -1105,7 +1105,9 @@ bool AP_Arming::generator_checks(bool display_failure) const
     char failure_msg[50] = {};
     if (!generator->pre_arm_check(failure_msg, sizeof(failure_msg))) {
         check_failed(display_failure, "Generator: %s", failure_msg);
-        return false;
+        //return false;
+        // modified this to not interfere with normal arming
+        return true;
     }
 #endif
     return true;

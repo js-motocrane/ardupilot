@@ -15,6 +15,9 @@
 
 #include "AP_Generator_RichenPower.h"
 
+#include <GCS_MAVLink/GCS.h>
+//#include <AP_HAL/AP_HAL.h>
+
 #if GENERATOR_ENABLED
 
 #include <AP_Logger/AP_Logger.h>
@@ -24,6 +27,12 @@
 #include <AP_HAL/utility/sparse-endian.h>
 
 extern const AP_HAL::HAL& hal;
+
+// adding this to access voltage from battery monitoring
+const AP_BattMonitor &battery = AP::battery();
+
+
+AP_HAL::AnalogSource* chan;    //delare a pointer to AnalogSource object. AnalogSource class can be found in : AP_HAL->AnalogIn.h
 
 // init method; configure communications with the generator
 void AP_Generator_RichenPower::init()
@@ -38,8 +47,20 @@ void AP_Generator_RichenPower::init()
 
     // Tell frontend what measurements are available for this generator
     _frontend._has_current = true;
-    _frontend._has_consumed_energy = false;
-    _frontend._has_fuel_remaining = false;
+//    _frontend._has_consumed_energy = false;
+//    _frontend._has_fuel_remaining = false;
+
+    _frontend._has_consumed_energy = true;
+    _frontend._has_fuel_remaining = true;
+
+    // initialize flag to indicate whether we have captured the time yet or not
+    timeCaptured = 0;
+
+
+    // initialize analog channel for reading external current sensor on ADC port
+    chan = hal.analogin->channel(15);    //initialization of chan variable. AnalogIn class can be found in : AP_HAL->AnalogIn.h
+
+    chan->set_pin(15);
 }
 
 // find a RichenPower message in the buffer, starting at
@@ -60,94 +81,220 @@ void AP_Generator_RichenPower::move_header_in_buffer(uint8_t initial_offset)
     }
 }
 
+//// read - read serial port, return true if a new reading has been found
+//bool AP_Generator_RichenPower::get_reading()
+//{
+//    // Example of a packet from a H2 controller:
+//    //AA 55 00 0A 00 00 00 00 00 04 1E B0 00 10 00 00 23 7A 23
+//    //7A 11 1D 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00
+//    //00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+//    //00 00 00 00 00 00 00 00 00 1E BE 55 AA
+//    //16 bit one data Hight + Low
+//
+//    // fill our buffer some more:
+//    uint32_t nbytes = uart->read(&u.parse_buffer[body_length],
+//                                 ARRAY_SIZE(u.parse_buffer)-body_length);
+//    if (nbytes == 0) {
+//        return false;
+//    }
+//    body_length += nbytes;
+//
+//    move_header_in_buffer(0);
+//
+//    // header byte 1 is correct.
+//    if (body_length < ARRAY_SIZE(u.parse_buffer)) {
+//        // need a full buffer to have a valid message...
+//        return false;
+//    }
+//
+//    if (u.packet.headermagic2 != HEADER_MAGIC2) {
+//        move_header_in_buffer(1);
+//        return false;
+//    }
+//
+//    // check for the footer signature:
+//    if (u.packet.footermagic1 != FOOTER_MAGIC1) {
+//        move_header_in_buffer(1);
+//        return false;
+//    }
+//    if (u.packet.footermagic2 != FOOTER_MAGIC2) {
+//        move_header_in_buffer(1);
+//        return false;
+//    }
+//
+//    // calculate checksum....
+//    uint16_t checksum = 0;
+//    const uint8_t *checksum_buffer = &u.parse_buffer[2];
+//    for (uint8_t i=0; i<5; i++) {
+//        checksum += be16toh_ptr(&checksum_buffer[2*i]);
+//    }
+//
+//    if (checksum != be16toh(u.packet.checksum)) {
+//        move_header_in_buffer(1);
+//        return false;
+//    }
+//
+//    // check the version:
+//    const uint16_t version = be16toh(u.packet.version);
+//    const uint8_t major = version / 100;
+//    const uint8_t minor = (version % 100) / 10;
+//    const uint8_t point = version % 10;
+//    if (!protocol_information_anounced) {
+//        gcs().send_text(MAV_SEVERITY_INFO, "RichenPower: protocol %u.%u.%u", major, minor, point);
+//        protocol_information_anounced = true;
+//    }
+//
+//    last_reading.runtime = be16toh(u.packet.runtime_hours) * 3600 +
+//        u.packet.runtime_minutes * 60 +
+//        u.packet.runtime_seconds;
+//    last_reading.seconds_until_maintenance = be16toh(u.packet.seconds_until_maintenance_high) * 65536 + be16toh(u.packet.seconds_until_maintenance_low);
+//    last_reading.errors = be16toh(u.packet.errors);
+//    last_reading.rpm = be16toh(u.packet.rpm);
+//    last_reading.output_voltage = be16toh(u.packet.output_voltage) / 100.0f;
+//    last_reading.output_current = be16toh(u.packet.output_current) / 100.0f;
+//    last_reading.mode = (Mode)u.packet.mode;
+//
+//    last_reading_ms = AP_HAL::millis();
+//
+//    body_length = 0;
+//
+//    // update the time we started idling at:
+//    if (last_reading.mode == Mode::IDLE) {
+//        if (idle_state_start_ms == 0) {
+//            idle_state_start_ms = last_reading_ms;
+//        }
+//    } else {
+//        idle_state_start_ms = 0;
+//    }
+//
+//    return true;
+//}
+
 // read - read serial port, return true if a new reading has been found
 bool AP_Generator_RichenPower::get_reading()
 {
-    // Example of a packet from a H2 controller:
-    //AA 55 00 0A 00 00 00 00 00 04 1E B0 00 10 00 00 23 7A 23
-    //7A 11 1D 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00
-    //00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-    //00 00 00 00 00 00 00 00 00 1E BE 55 AA
-    //16 bit one data Hight + Low
 
-    // fill our buffer some more:
-    uint32_t nbytes = uart->read(&u.parse_buffer[body_length],
-                                 ARRAY_SIZE(u.parse_buffer)-body_length);
-    if (nbytes == 0) {
-        return false;
-    }
-    body_length += nbytes;
 
-    move_header_in_buffer(0);
+	// update the readings here
 
-    // header byte 1 is correct.
-    if (body_length < ARRAY_SIZE(u.parse_buffer)) {
-        // need a full buffer to have a valid message...
-        return false;
-    }
+	// temporary - just counting seconds from boot up of flight controller with this
+    last_reading.runtime = (uint32_t)(AP_HAL::millis()*0.001);
+    last_reading.seconds_until_maintenance = (uint32_t)(AP_HAL::millis()*0.001);
 
-    if (u.packet.headermagic2 != HEADER_MAGIC2) {
-        move_header_in_buffer(1);
-        return false;
-    }
+    // temporary - just setting errors to 0
+    uint16_t errors;
+    errors = 0;
+    last_reading.errors = errors;
 
-    // check for the footer signature:
-    if (u.packet.footermagic1 != FOOTER_MAGIC1) {
-        move_header_in_buffer(1);
-        return false;
-    }
-    if (u.packet.footermagic2 != FOOTER_MAGIC2) {
-        move_header_in_buffer(1);
-        return false;
-    }
+    // temporary - just setting rpm to arbitrary number
+    uint16_t rpmTemp;
+    rpmTemp = 12000;
+    last_reading.rpm = rpmTemp;
 
-    // calculate checksum....
-    uint16_t checksum = 0;
-    const uint8_t *checksum_buffer = &u.parse_buffer[2];
-    for (uint8_t i=0; i<5; i++) {
-        checksum += be16toh_ptr(&checksum_buffer[2*i]);
-    }
+    // get voltage from battery monitor
+    last_reading.output_voltage = battery.voltage();
 
-    if (checksum != be16toh(u.packet.checksum)) {
-        move_header_in_buffer(1);
-        return false;
-    }
+    //last_reading.output_voltage = 51.0;
 
-    // check the version:
-    const uint16_t version = be16toh(u.packet.version);
-    const uint8_t major = version / 100;
-    const uint8_t minor = (version % 100) / 10;
-    const uint8_t point = version % 10;
-    if (!protocol_information_anounced) {
-        gcs().send_text(MAV_SEVERITY_INFO, "RichenPower: protocol %u.%u.%u", major, minor, point);
-        protocol_information_anounced = true;
-    }
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "GEN update %.2f",last_reading.output_voltage);
 
-    last_reading.runtime = be16toh(u.packet.runtime_hours) * 3600 +
-        u.packet.runtime_minutes * 60 +
-        u.packet.runtime_seconds;
-    last_reading.seconds_until_maintenance = be16toh(u.packet.seconds_until_maintenance_high) * 65536 + be16toh(u.packet.seconds_until_maintenance_low);
-    last_reading.errors = be16toh(u.packet.errors);
-    last_reading.rpm = be16toh(u.packet.rpm);
-    last_reading.output_voltage = be16toh(u.packet.output_voltage) / 100.0f;
-    last_reading.output_current = be16toh(u.packet.output_current) / 100.0f;
-    last_reading.mode = (Mode)u.packet.mode;
+    // get analog reading and convert it to current
+	float I_vm  = chan->voltage_average();
+	I_vm = I_vm/2.0; // scale voltage according to the documentation (it is multiplied by 2)
 
-    last_reading_ms = AP_HAL::millis();
+	//gcs().send_text(MAV_SEVERITY_CRITICAL, "GEN update %.2f",I_vm);
 
-    body_length = 0;
+	float cur_local;
+	// scale into current
+	//cur_local = (I_vm*0.000805664 - 0.5) * 16.667;
+	cur_local = (I_vm - 0.5) * 16.667;
+
+	if (cur_local < 0.0)
+	{
+		cur_local = 0.0;
+	}
+
+	// filter it
+	last_reading.output_current = lastCurrent * 0.7 + cur_local * 0.3;
+
+	if (last_reading.output_current < 0.5)
+	{
+		// cap it to zero
+		last_reading.output_current = 0.0;
+	}
+
+	lastCurrent = last_reading.output_current;
+
+	last_reading_ms = AP_HAL::millis();
+
+	uint8_t tempMode = 0x01; // RUN
+    last_reading.mode = (Mode)tempMode;
+
+    // calculate instantaneous power
+    last_reading.pwrGenerated = last_reading.output_current * last_reading.output_voltage;
+
+    // *************************************************************************************************
+    // *********** ENERGY INTEGRAL CALCULATION *********************************************************
+    // *************************************************************************************************
+
+	float dt;
+
+	if (!timeCaptured)
+	{
+		timeCaptured = 1;
+
+		dt = 0.0;
+		lastMs = AP_HAL::millis();
+	}
+	else
+	{
+		// we got the value once already
+		dt = ((float)(AP_HAL::millis() - lastMs)) * 0.001; // convert to seconds
+		// update previous time
+		lastMs = AP_HAL::millis();
+	}
+
+	if (last_reading.pwrIntegral > GEN_ENERGY_MAX_KJ)
+	{
+		last_reading.pwrIntegral = GEN_ENERGY_MAX_KJ;
+	}
+	else
+	{
+		last_reading.pwrIntegral += last_reading.pwrGenerated * dt * 0.001; // converting to kJ
+	}
+
+
+
+
+    // *************************************************************************************************
+    // *********** END OF ENERGY INTEGRAL CALCULATION **************************************************
+    // *************************************************************************************************
+
+	fuelPctLocal = 100.0 - last_reading.pwrIntegral / GEN_ENERGY_THRESH_KJ * 100.0;
+
+	fuelPctLocal /= 100.0; // to keep within 0 and 1 bounds that is expected
+
+	if (fuelPctLocal < 0.0)
+	{
+		fuelPctLocal = 0.0;
+	}
+
+
+
+
+//    body_length = 0;
 
     // update the time we started idling at:
-    if (last_reading.mode == Mode::IDLE) {
-        if (idle_state_start_ms == 0) {
-            idle_state_start_ms = last_reading_ms;
-        }
-    } else {
-        idle_state_start_ms = 0;
-    }
+//    if (last_reading.mode == Mode::IDLE) {
+//        if (idle_state_start_ms == 0) {
+//            idle_state_start_ms = last_reading_ms;
+//        }
+//    } else {
+//        idle_state_start_ms = 0;
+//    }
 
     return true;
-}
+} // end of get_reading()
 
 // update the synthetic heat measurement we are keeping for the
 // generator.  We keep a synthetic heat measurement as the telemetry
@@ -199,21 +346,21 @@ constexpr float AP_Generator_RichenPower::heat_required_for_run()
 */
 void AP_Generator_RichenPower::update(void)
 {
-    if (uart == nullptr) {
-        return;
-    }
-
-    if (last_reading_ms != 0) {
-        update_runstate();
-    }
+//    if (uart == nullptr) {
+//        return;
+//    }
+//
+//    if (last_reading_ms != 0) {
+//        update_runstate();
+//    }
 
     (void)get_reading();
 
-    update_heat();
+//    update_heat();
 
     update_frontend_readings();
 
-    Log_Write();
+    //Log_Write();
 }
 
 // update_runstate updates the servo output we use to control the
@@ -379,6 +526,8 @@ void AP_Generator_RichenPower::update_frontend_readings(void)
     _voltage = last_reading.output_voltage;
     _current = last_reading.output_current;
     _rpm = last_reading.rpm;
+    _consumed_mah = last_reading.pwrIntegral;
+    _fuel_remain_pct = fuelPctLocal;
 
     update_frontend();
 }
@@ -402,10 +551,10 @@ bool AP_Generator_RichenPower::healthy() const
 //send mavlink generator status
 void AP_Generator_RichenPower::send_generator_status(const GCS_MAVLINK &channel)
 {
-    if (last_reading_ms == 0) {
-        // nothing to report
-        return;
-    }
+//    if (last_reading_ms == 0) {
+//        // nothing to report
+//        return;
+//    }
 
     uint64_t status = 0;
     if (last_reading.rpm == 0) {
@@ -453,13 +602,29 @@ void AP_Generator_RichenPower::send_generator_status(const GCS_MAVLINK &channel)
         status |= MAV_GENERATOR_STATUS_FLAG_BATTERY_UNDERVOLT_FAULT;
     }
 
+//    mavlink_msg_generator_status_send(
+//        channel.get_chan(),
+//        status,//
+//        last_reading.rpm, // generator_speed
+//        std::numeric_limits<double>::quiet_NaN(), // battery_current; current into/out of battery
+//        last_reading.output_current, // load_current; Current going to UAV
+//        std::numeric_limits<double>::quiet_NaN(), // power_generated; the power being generated
+//        last_reading.output_voltage, // bus_voltage; Voltage of the bus seen at the generator
+//        INT16_MAX, // rectifier_temperature
+//        std::numeric_limits<double>::quiet_NaN(), // bat_current_setpoint; The target battery current
+//        INT16_MAX, // generator temperature
+//        last_reading.runtime,
+//        (int32_t)last_reading.seconds_until_maintenance
+//        );
+
     mavlink_msg_generator_status_send(
         channel.get_chan(),
-        status,
+        status,//
         last_reading.rpm, // generator_speed
         std::numeric_limits<double>::quiet_NaN(), // battery_current; current into/out of battery
-        last_reading.output_current, // load_current; Current going to UAV
-        std::numeric_limits<double>::quiet_NaN(), // power_generated; the power being generated
+		last_reading.output_current, // load_current; Current going to UAV
+        //std::numeric_limits<double>::quiet_NaN(), // power_generated; the power being generated
+		last_reading.pwrGenerated,
         last_reading.output_voltage, // bus_voltage; Voltage of the bus seen at the generator
         INT16_MAX, // rectifier_temperature
         std::numeric_limits<double>::quiet_NaN(), // bat_current_setpoint; The target battery current

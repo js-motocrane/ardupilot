@@ -4516,11 +4516,15 @@ void GCS_MAVLINK::send_set_position_target_global_int(uint8_t target_system, uin
 
 void GCS_MAVLINK::send_generator_status() const
 {
+
+//gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 2");
 #if GENERATOR_ENABLED
     AP_Generator *generator = AP::generator();
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 3");
     if (generator == nullptr) {
         return;
     }
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 4");
     generator->send_generator_status(*this);
 #endif
 }
@@ -4795,7 +4799,9 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
         break;
 
     case MSG_GENERATOR_STATUS:
+    	//gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 1");
     	CHECK_PAYLOAD_SIZE(GENERATOR_STATUS);
+
     	send_generator_status();
     	break;
 

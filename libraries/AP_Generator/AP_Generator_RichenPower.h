@@ -10,6 +10,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#define GEN_ENERGY_THRESH_KJ 100.0 // number of kJ in the full tank
+#define GEN_ENERGY_MAX_KJ 200.0 // max number of kJ to log up to
 
 /*
  *  Example setup:
@@ -92,11 +94,19 @@ private:
         float       output_voltage;
         float       output_current;
         Mode        mode;
+        float 		pwrIntegral;
+        float		pwrGenerated;
     };
+
+    float lastCurrent;
+    float fuelPctLocal;
 
     // method and state to write and entry to the onboard log:
     void Log_Write();
     uint32_t last_logged_reading_ms;
+
+    uint8_t timeCaptured;
+    uint32_t lastMs;
 
     struct Reading last_reading;
     uint32_t last_reading_ms;

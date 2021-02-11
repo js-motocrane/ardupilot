@@ -14,6 +14,7 @@
  */
 
 #include "AP_Generator.h"
+#include <GCS_MAVLink/GCS.h>
 
 #if GENERATOR_ENABLED
 
@@ -94,9 +95,11 @@ enum AP_Generator::Type AP_Generator::type() const
 // Pass through to backend
 void AP_Generator::send_generator_status(const GCS_MAVLINK &channel)
 {
+	//gcs().send_text(MAV_SEVERITY_CRITICAL, "Reach 5");
     if (_driver_ptr == nullptr) {
         return;
     }
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "Reach 6");
     _driver_ptr->send_generator_status(channel);
 }
 
