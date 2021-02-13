@@ -450,6 +450,7 @@ static const ap_message STREAM_EXTRA3_msgs[] = {
     MSG_EKF_STATUS_REPORT,
     MSG_VIBRATION,
     MSG_RPM,
+	MSG_GENERATOR_STATUS,
     MSG_ESC_TELEMETRY,
 };
 static const ap_message STREAM_PARAMS_msgs[] = {

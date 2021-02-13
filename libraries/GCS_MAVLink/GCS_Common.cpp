@@ -39,6 +39,9 @@
 #include <AP_OpticalFlow/OpticalFlow.h>
 #include <AP_Baro/AP_Baro.h>
 
+// test
+#include <../ArduCopter/Copter.h>
+
 #include <stdio.h>
 
 #if HAL_RCINPUT_WITH_AP_RADIO
@@ -65,6 +68,8 @@
 #include <AP_GPS/AP_GPS.h>
 
 extern const AP_HAL::HAL& hal;
+
+//extern const Copter copter;
 
 uint32_t GCS_MAVLINK::last_radio_status_remrssi_ms;
 uint8_t GCS_MAVLINK::mavlink_active = 0;
@@ -783,6 +788,7 @@ ap_message GCS_MAVLINK::mavlink_id_to_ap_message_id(const uint32_t mavlink_id) c
         { MAVLINK_MSG_ID_DEEPSTALL,             MSG_LANDING},
         { MAVLINK_MSG_ID_EXTENDED_SYS_STATE,    MSG_EXTENDED_SYS_STATE},
         { MAVLINK_MSG_ID_AUTOPILOT_VERSION,     MSG_AUTOPILOT_VERSION},
+		{ MAVLINK_MSG_ID_GENERATOR_STATUS,     	MSG_GENERATOR_STATUS},
             };
 
     for (uint8_t i=0; i<ARRAY_SIZE(map); i++) {
@@ -4185,6 +4191,22 @@ void GCS_MAVLINK::send_set_position_target_global_int(uint8_t target_system, uin
             0,0);   // yaw, yaw_rate
 }
 
+void GCS_MAVLINK::send_generator_status() const
+{
+
+
+	//Copter *copter =
+    //AP_Generator *generator = AP::generator();
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 3");
+    //if (generator == nullptr) {
+    //    return;
+    //}
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 4");
+    //generator->send_generator_status(*this);
+	copter.send_generator_status(*this);
+	//copter::send_generator_status(*this);
+}
+
 bool GCS_MAVLINK::try_send_message(const enum ap_message id)
 {
     bool ret = true;
@@ -4453,6 +4475,12 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
         CHECK_PAYLOAD_SIZE(VIBRATION);
         send_vibration();
         break;
+
+    case MSG_GENERATOR_STATUS:
+    	CHECK_PAYLOAD_SIZE(GENERATOR_STATUS);
+
+    	send_generator_status();
+    	break;
 
     case MSG_AUTOPILOT_VERSION:
         CHECK_PAYLOAD_SIZE(AUTOPILOT_VERSION);

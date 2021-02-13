@@ -243,6 +243,8 @@ public:
     void setup() override;
     void loop() override;
 
+    void send_generator_status(const GCS_MAVLINK &channel);
+
 private:
     static const AP_FWVersion fwver;
 
@@ -912,6 +914,8 @@ private:
     void userhook_auxSwitch1(uint8_t ch_flag);
     void userhook_auxSwitch2(uint8_t ch_flag);
     void userhook_auxSwitch3(uint8_t ch_flag);
+    // custom
+    //void send_generator_status(const GCS_MAVLINK &channel);
 
 #if OSD_ENABLED == ENABLED
     void publish_osd_info();
