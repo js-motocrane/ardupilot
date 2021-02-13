@@ -4526,6 +4526,10 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
 #endif
         break;
     }
+    case MSG_GENERATOR_STATUS:
+        // TODO - CHECK_PAYLOAD_SIZE(GENERATOR_STATUS);
+        //send_generator_status();
+        break;
 
     default:
         // try_send_message must always at some stage return true for

@@ -650,6 +650,25 @@ private:
 
 
 
+//    // un-packed data from the generator:
+//    struct Reading {
+//        uint32_t    runtime; //seconds
+//        uint32_t    seconds_until_maintenance;
+//        uint16_t    errors;
+//        uint16_t    rpm;
+//        float       output_voltage;
+//        float       output_current;
+//        GenMode     mode;
+//        float 		pwrIntegral;
+//        float		pwrGenerated;
+//    };
+
+//    struct Reading last_reading;
+//
+//    float lastCurrent;
+//    float fuelPctLocal;
+
+
     // AP_State.cpp
     void set_auto_armed(bool b);
     void set_simple_mode(uint8_t b);

@@ -40,6 +40,45 @@ uint32_t last_reading_ms;
 uint8_t timeCaptured;
 uint32_t lastMs;
 
+extern const AP_HAL::HAL& hal;
+
+// adding this to access voltage from battery monitoring
+const AP_BattMonitor &battery = AP::battery();
+
+AP_HAL::AnalogSource* chan;    //delare a pointer to AnalogSource object. AnalogSource class can be found in : AP_HAL->AnalogIn.h
+
+// reported mode from the generator:
+enum GenMode {
+    IDLE = 0,
+    RUN = 1,
+    CHARGE = 2,
+    BALANCE = 3,
+    OFF = 4,
+};
+
+// un-packed data from the generator:
+struct Reading {
+    uint32_t    runtime; //seconds
+    uint32_t    seconds_until_maintenance;
+    uint16_t    errors;
+    uint16_t    rpm;
+    float       output_voltage;
+    float       output_current;
+    GenMode     mode;
+    float 		pwrIntegral;
+    float		pwrGenerated;
+};
+
+// declare some variables to use
+struct Reading last_reading;
+
+float lastCurrent;
+float fuelPctLocal;
+uint32_t last_reading_ms;
+uint8_t timeCaptured;
+uint32_t lastMs;
+
+
 #ifdef USERHOOK_INIT
 void Copter::userhook_init()
 {
