@@ -783,6 +783,7 @@ ap_message GCS_MAVLINK::mavlink_id_to_ap_message_id(const uint32_t mavlink_id) c
         { MAVLINK_MSG_ID_DEEPSTALL,             MSG_LANDING},
         { MAVLINK_MSG_ID_EXTENDED_SYS_STATE,    MSG_EXTENDED_SYS_STATE},
         { MAVLINK_MSG_ID_AUTOPILOT_VERSION,     MSG_AUTOPILOT_VERSION},
+		{ MAVLINK_MSG_ID_GENERATOR_STATUS,     	MSG_GENERATOR_STATUS},
             };
 
     for (uint8_t i=0; i<ARRAY_SIZE(map); i++) {
@@ -4185,6 +4186,24 @@ void GCS_MAVLINK::send_set_position_target_global_int(uint8_t target_system, uin
             0,0);   // yaw, yaw_rate
 }
 
+void GCS_MAVLINK::send_generator_status() const
+{
+
+//gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 2");
+//#if GENERATOR_ENABLED
+	// TODO - create custom library or find a way to link to a function in UserCode.cpp
+    //AP_Generator *generator = AP::generator();
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 3");
+    //if (generator == nullptr) {
+     //   return;
+    //}
+    //gcs().send_text(MAV_SEVERITY_CRITICAL, "Reached 4");
+    //generator->send_generator_status(*this);
+	// call the function to send generator status
+
+//#endif
+}
+
 bool GCS_MAVLINK::try_send_message(const enum ap_message id)
 {
     bool ret = true;
@@ -4498,6 +4517,10 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
 #endif
         break;
     }
+    case MSG_GENERATOR_STATUS:
+        // TODO - CHECK_PAYLOAD_SIZE(GENERATOR_STATUS);
+        //send_generator_status();
+        break;
 
     default:
         // try_send_message must always at some stage return true for
