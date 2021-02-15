@@ -40,43 +40,16 @@ uint32_t last_reading_ms;
 uint8_t timeCaptured;
 uint32_t lastMs;
 
-extern const AP_HAL::HAL& hal;
+uint32_t runTimeMsLast;
+uint8_t runTimeActive;
+float runTimeDt;
+float runTimeSec;
 
-// adding this to access voltage from battery monitoring
-const AP_BattMonitor &battery = AP::battery();
+float energyScaleFact;
 
-AP_HAL::AnalogSource* chan;    //delare a pointer to AnalogSource object. AnalogSource class can be found in : AP_HAL->AnalogIn.h
+uint16_t genRadioCmd;
 
-// reported mode from the generator:
-enum GenMode {
-    IDLE = 0,
-    RUN = 1,
-    CHARGE = 2,
-    BALANCE = 3,
-    OFF = 4,
-};
-
-// un-packed data from the generator:
-struct Reading {
-    uint32_t    runtime; //seconds
-    uint32_t    seconds_until_maintenance;
-    uint16_t    errors;
-    uint16_t    rpm;
-    float       output_voltage;
-    float       output_current;
-    GenMode     mode;
-    float 		pwrIntegral;
-    float		pwrGenerated;
-};
-
-// declare some variables to use
-struct Reading last_reading;
-
-float lastCurrent;
-float fuelPctLocal;
-uint32_t last_reading_ms;
-uint8_t timeCaptured;
-uint32_t lastMs;
+uint64_t status;
 
 
 #ifdef USERHOOK_INIT
@@ -90,6 +63,14 @@ void Copter::userhook_init()
     chan->set_pin(15);
 
     startingFuelPct = (uint8_t)(g.gen_fuel_pct);
+
+    energyScaleFact = g.gen_f_scale;
+
+    runTimeMsLast = AP_HAL::millis();
+    runTimeActive = 0;
+    runTimeSec = 0.0;
+
+    status = 0;
 }
 #endif
 
@@ -106,8 +87,53 @@ void Copter::userhook_50Hz()
     // put your 50Hz code here
 	// update the readings here
 
+	// read the user-commanded status of channel 9 [0 index based]
+	genRadioCmd = hal.rcin->read(8); // actually channel 9
+
+	// set mode based on the value
+	if ((genRadioCmd > 900) && (genRadioCmd < 1200))
+	{
+		last_reading.mode = OFF;
+	}
+	else if ((genRadioCmd > 1200)&&(genRadioCmd < 1700))
+	{
+		last_reading.mode = IDLE;
+	}
+	else if ((genRadioCmd > 1700)&&(genRadioCmd < 2300))
+	{
+		last_reading.mode = RUN;
+	}
+	else
+	{
+		last_reading.mode = OFF;
+	}
+
+
+	runTimeDt = 0.0;
+	if (((last_reading.mode == IDLE) || (last_reading.mode == RUN))&&(runTimeActive))
+	{
+		 runTimeDt = (float)(AP_HAL::millis() - runTimeMsLast) * 0.001; // convert to seconds (dt)
+		 runTimeMsLast = AP_HAL::millis();
+	}
+	else if (((last_reading.mode == IDLE) || (last_reading.mode == RUN))&&(!runTimeActive))
+	{
+		runTimeMsLast = AP_HAL::millis();
+		runTimeActive = 1;
+	}
+	else if ((last_reading.mode == OFF)&&(runTimeActive))
+	{
+		runTimeActive = 0;
+	}
+
 	// temporary - just counting seconds from boot up of flight controller with this
-    last_reading.runtime = (uint32_t)(AP_HAL::millis()*0.001);
+    //last_reading.runtime = (uint32_t)(AP_HAL::millis()*0.001);
+
+
+	// using measured RC IN values
+	runTimeSec += runTimeDt;
+    last_reading.runtime = (uint32_t)(runTimeSec);
+
+
     last_reading.seconds_until_maintenance = (uint32_t)(AP_HAL::millis()*0.001);
 
     // temporary - just setting errors to 0
@@ -116,8 +142,27 @@ void Copter::userhook_50Hz()
     last_reading.errors = errors;
 
     // temporary - just setting rpm to arbitrary number
+
+    // TODO - base it on run state
     uint16_t rpmTemp;
-    rpmTemp = 12000;
+
+    switch(last_reading.mode)
+    {
+    case GenMode::OFF:
+    	rpmTemp = 0;
+    	break;
+    case GenMode::IDLE:
+    	rpmTemp = 3000;
+    	break;
+    case GenMode::RUN:
+    	rpmTemp = 14000;
+    	break;
+    default:
+    	rpmTemp = 5000;
+    	break;
+    } // switch(last_reading.mode)
+
+//    rpmTemp = 12000;
     last_reading.rpm = rpmTemp;
 
     // get voltage from battery monitor
@@ -136,7 +181,12 @@ void Copter::userhook_50Hz()
 	float cur_local;
 	// scale into current
 	//cur_local = (I_vm*0.000805664 - 0.5) * 16.667;
-	cur_local = (I_vm - 0.5) * 16.667;
+	// NOTE**
+	// Original PX4 version was scaling the ADC to 5V equivalent (I think).
+	// now, it's scaled (from above) to 3.3V equivalent. The 16.667 was from
+	// the PX4 version, but now I need to scale it back up to match the 5V version.
+	// This is why there is the 1.515151 factor (5V/3.3V)
+	cur_local = (I_vm - 0.5) * 16.667 * 1.515151;// * energyScaleFact;
 
 	if (cur_local < 0.0)
 	{
@@ -156,8 +206,8 @@ void Copter::userhook_50Hz()
 
 	last_reading_ms = AP_HAL::millis();
 
-	uint8_t tempMode = 0x01; // RUN
-    last_reading.mode = (GenMode)tempMode;
+//	uint8_t tempMode = 0x01; // RUN
+//    last_reading.mode = (GenMode)tempMode;
 
     // calculate instantaneous power
 
@@ -205,7 +255,7 @@ void Copter::userhook_50Hz()
 
 
 
-	fuelPctLocal = (float)(startingFuelPct) - last_reading.pwrIntegral / GEN_ENERGY_THRESH_KJ * 100.0;
+	fuelPctLocal = (float)(startingFuelPct) - last_reading.pwrIntegral / (GEN_ENERGY_THRESH_KJ * energyScaleFact) * 100.0;
 
 	fuelPctLocal /= 100.0; // to keep within 0 and 1 bounds that is expected
 
@@ -235,10 +285,64 @@ void Copter::userhook_50Hz()
 	    	startingFuelPct = fuelPctAdj;
 	    	last_reading.pwrIntegral = 0;
 	    }
-	    //gcs().send_text(MAV_SEVERITY_CRITICAL, "GEN: %.1f A, %.1f kW, %.1f %% ",last_reading.output_current,last_reading.pwrGenerated*0.001,fuelPctLocal*100);
-	    //gcs().send_text(MAV_SEVERITY_NOTICE, "GEN: %.1f A, %.2f kW, %.1f %% ",last_reading.output_current,last_reading.pwrGenerated*0.001,fuelPctLocal*100);
+
+	    float tempScaleFact;
+	    tempScaleFact = (float)(g.gen_f_scale);
+	    float diffScaleFac;
+	    diffScaleFac = tempScaleFact - energyScaleFact;
+	    if(diffScaleFac < 0.0)
+	    {
+	    	diffScaleFac = -diffScaleFac;
+	    }
+
+	    if(diffScaleFac > 0.0001)
+	    {
+	    	energyScaleFact = tempScaleFact;
+	    }
+
+	    // display output to console
+
 	    gcs().send_text(MAV_SEVERITY_INFO, "GEN: %.1f A, %.2f kW, %.1f %% ",last_reading.output_current,last_reading.pwrGenerated*0.001,fuelPctLocal*100);
+	    //gcs().send_text(MAV_SEVERITY_INFO, "PWM: %d",genRadioCmd);
 	}
+
+	static uint8_t counter2;
+	counter2++;
+	if (counter2 > 10)
+	{
+		counter2 = 0;
+		// log //	 log runtime, current, power, mode
+
+//	    AP::logger().Write(
+//	        "GEN",
+//	        "TimeUS,runTime,maintTime,errors,rpm,ovolt,ocurr,mode",
+//	        "s-------",
+//	        "F-------",
+//	        "QIIHHffB",
+//	        AP_HAL::micros64(),
+//	        last_reading.runtime,
+//	        last_reading.seconds_until_maintenance,
+//	        last_reading.errors,
+//	        last_reading.rpm,
+//	        last_reading.output_voltage,
+//	        last_reading.output_current,
+//	        last_reading.mode
+//	        );
+
+	    AP::logger().Write(
+	        "GEN",
+	        "TimeUS,runtime,current,power,mode",
+			//"ssAW-", // units
+	        "QQffB",
+	        AP_HAL::micros64(),
+	        last_reading.runtime,
+	        last_reading.output_current,
+			last_reading.pwrGenerated,
+	        last_reading.mode
+	        );
+
+	} // counter 2
+
 }
 #endif
 
@@ -289,10 +393,40 @@ void Copter::send_generator_status(const GCS_MAVLINK &channel)
 //        return;
 //    }
 
-    uint64_t status = 0;
+    status = 0;
 
-    status |= MAV_GENERATOR_STATUS_FLAG_GENERATING;
-    status |= MAV_GENERATOR_STATUS_FLAG_CHARGING;
+//    if(last_reading.mode == GenMode::OFF)
+//    {
+//    	status |= MAV_GENERATOR_STATUS_FLAG_OFF;
+//    }
+//    else if (last_reading.mode == GenMode::IDLE)
+//    {
+//    	status |= MAV_GENERATOR_STATUS_FLAG_IDLE;
+//    }
+//    else if (last_reading.mode == GenMode::RUN)
+//    {
+//        status |= MAV_GENERATOR_STATUS_FLAG_GENERATING;
+//        status |= MAV_GENERATOR_STATUS_FLAG_CHARGING;
+//    }
+
+    switch(last_reading.mode)
+    {
+    case GenMode::OFF:
+    	status |= MAV_GENERATOR_STATUS_FLAG_OFF;
+    	break;
+    case GenMode::IDLE:
+    	status |= MAV_GENERATOR_STATUS_FLAG_IDLE;
+    	break;
+    case GenMode::RUN:
+        status |= MAV_GENERATOR_STATUS_FLAG_GENERATING;
+        status |= MAV_GENERATOR_STATUS_FLAG_CHARGING;
+    	break;
+    default:
+    	status |= MAV_GENERATOR_STATUS_FLAG_OFF;
+    	break;
+    }
+
+
 
 //    if (last_reading.rpm == 0) {
 //        status |= MAV_GENERATOR_STATUS_FLAG_OFF;
@@ -339,20 +473,6 @@ void Copter::send_generator_status(const GCS_MAVLINK &channel)
 //        status |= MAV_GENERATOR_STATUS_FLAG_BATTERY_UNDERVOLT_FAULT;
 //    }
 
-//    mavlink_msg_generator_status_send(
-//        channel.get_chan(),
-//        status,//
-//        last_reading.rpm, // generator_speed
-//        std::numeric_limits<double>::quiet_NaN(), // battery_current; current into/out of battery
-//        last_reading.output_current, // load_current; Current going to UAV
-//        std::numeric_limits<double>::quiet_NaN(), // power_generated; the power being generated
-//        last_reading.output_voltage, // bus_voltage; Voltage of the bus seen at the generator
-//        INT16_MAX, // rectifier_temperature
-//        std::numeric_limits<double>::quiet_NaN(), // bat_current_setpoint; The target battery current
-//        INT16_MAX, // generator temperature
-//        last_reading.runtime,
-//        (int32_t)last_reading.seconds_until_maintenance
-//        );
 
     mavlink_msg_generator_status_send(
         channel.get_chan(),

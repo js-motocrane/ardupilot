@@ -194,6 +194,7 @@ public:
 
         // 98: CUSTOM
         k_param_gen_fuel_pct = 98,
+		k_param_gen_f_scale = 99,
                 
         //
         // 100: Inertial Nav
@@ -452,6 +453,7 @@ public:
 
     // custom
     AP_Int8			gen_fuel_pct;
+    AP_Float		gen_f_scale;
 
 #if MODE_THROW_ENABLED == ENABLED
     AP_Int8         throw_motor_start;

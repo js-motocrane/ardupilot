@@ -707,6 +707,15 @@ const AP_Param::Info Copter::var_info[] = {
     // @Increment: 1
     GSCALAR(gen_fuel_pct,  "GEN_FUEL_PCT",  100),
 
+    // @Param: GEN_F_SCALE
+    // @DisplayName: Generator energy to fuel scale adjustment
+    // @Description: Modify scaling of generator energy usage
+    // @User: Standard
+    // @Units: none
+    // @Range: -2.0 2.0
+    // @Increment: 0.0001
+    GSCALAR(gen_f_scale,  "GEN_F_SCALE",  1.0),
+
 #if AP_TERRAIN_AVAILABLE && AC_TERRAIN
     // @Param: TERRAIN_FOLLOW
     // @DisplayName: Terrain Following use control
